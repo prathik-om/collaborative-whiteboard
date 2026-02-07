@@ -1,6 +1,21 @@
-# Collaborative Whiteboard
+# Collaborative Whiteboard - Development Guidelines
 
-Free real-time collaborative drawing for students and teachers. Share a code, draw together, no sign-up required.
+> **Purpose:** This file guides Claude Code in building our real-time collaborative whiteboard. It encodes our architectural decisions, common pitfalls, and quality standards so every AI-assisted coding session builds on accumulated knowledge.
+
+---
+
+## 🎯 Project Vision
+
+We're building a free, anonymous, real-time collaborative whiteboard for students and study groups. No friction—just share a code and draw together.
+
+**Our core principle:** Simplicity enables collaboration. Remove all barriers between idea and canvas.
+
+**Use cases:**
+- Study groups working on problem sets
+- Remote pair programming on whiteboards
+- Brainstorming sessions
+- Project planning and mind mapping
+- Homework collaboration
 
 ---
 
@@ -11,8 +26,8 @@ Free real-time collaborative drawing for students and teachers. Share a code, dr
 - ✅ tldraw integration with real-time sync
 - ✅ Anonymous session creation with memorable codes
 - ✅ Complete documentation (4 setup guides)
-- TypeScript strict mode (0 errors)
-- Tests configured (but not written yet - needs 80%+ coverage before production)
+- ✅ TypeScript strict mode (0 errors)
+- ⚠️ Tests configured (but not written yet - needs 80%+ coverage before production)
 
 **Phase 1 Features (COMPLETE):**
 - ✅ **Real-Time Collaborative Canvas** - Multiple users draw simultaneously
@@ -43,385 +58,423 @@ Free real-time collaborative drawing for students and teachers. Share a code, dr
 - Deploy to Vercel staging environment
 - Begin Phase 2: Templates (brainstorm, project plan, mind map)
 
-**For detailed roadmap:** See [`docs/plans/product-roadmap.md`](docs/plans/product-roadmap.md) (to be created)
+---
+
+## 🏗️ Tech Stack & Architecture
+
+### **Frontend**
+- **Framework:** Next.js 15.1.6 App Router (NOT Pages directory)
+  - Use `app/` directory structure
+  - Server Components by default, Client Components only when needed
+  - File-based routing: `app/board/page.tsx`
+- **Canvas:** tldraw 2.4.6 (CRDT-based collaborative whiteboard)
+  - Import: `import { Tldraw } from '@tldraw/tldraw'`
+  - Handles conflict resolution automatically
+- **Styling:** Tailwind CSS 3.4.1
+  - Use utility classes, no custom CSS files
+  - Mobile-first responsive design
+- **State Management:** React hooks (useState, useEffect, useRef)
+  - No Redux, Zustand, or external state libraries
+  - Keep it simple for MVP
+
+### **Backend & Database**
+- **Database:** Supabase (PostgreSQL + real-time)
+  - Use Supabase Realtime for live features (NOT Socket.io)
+  - Row Level Security (RLS) policies on all tables
+  - TypeScript types generated from schema
+- **Authentication:** None (anonymous by design)
+  - Device-based identification (client-generated UUID)
+  - Session codes for access control
+- **API Routes:** Next.js Route Handlers in `app/api/`
+  - Validate all inputs
+  - Return proper HTTP status codes
+
+### **Real-Time Communication**
+- **Primary:** Supabase Realtime broadcast
+  - Canvas state sync: Bidirectional between all participants
+  - Ephemeral messages (no database writes)
+  - ~50-100ms latency (acceptable for drawing)
+- **Fallback:** WebSockets/Socket.io ONLY if Supabase has performance issues
+
+### **Development & Testing**
+- **Testing:** Jest 29.7.0 + @testing-library/react 14.1.2
+- **Linting:** ESLint 8.x with Next.js config
+- **Type Checking:** TypeScript strict mode
+
+### **Hosting**
+- **Platform:** Vercel (recommended, auto-deploys from GitHub)
+- **Alternative:** Netlify, self-hosted Node.js
 
 ---
 
-## 📚 Documentation Index
+## ⚠️ Common Mistakes & How to Avoid Them
 
-### Getting Started
-- **[Quick Start Guide](QUICKSTART.md)** - 10-minute setup with troubleshooting
-- **[README](README.md)** - Project overview, features, tech stack
+### **Architecture & Code Structure**
 
-### Setup & Deployment
-- **[Supabase Setup](SUPABASE_SETUP.md)** - Database configuration step-by-step
-- **[Deployment Guide](DEPLOYMENT.md)** - Vercel deployment with monitoring
-- **[Project Summary](PROJECT_SUMMARY.md)** - Comprehensive implementation details
+**❌ DON'T:**
+- Create files over 300 lines (break into smaller components)
+- Mix Server and Client Components without `'use client'` directive
+- Put business logic in page components (use separate hooks/utils)
+- Assume data exists (always handle loading/error states)
+- Over-abstract on first iteration (YAGNI principle)
 
-### Architecture (To Be Created)
-- **Tech Stack** - Technologies, dependencies, versions
-- **Project Structure** - Directory layout, file organization
-- **System Flows** - How real-time sync and session creation work
-- **File Reference** - Quick find for important files
+**✅ DO:**
+- Keep components focused (one responsibility)
+- Use TypeScript strict mode (catch errors early)
+- Write clear, descriptive variable names (`sessionCode` not `sc`)
+- Add comments for "why" not "what" (code shows what, comments explain why)
+- Extract repeated logic into utility functions
 
-### Operations (To Be Created)
-- **Troubleshooting Guide** - Common issues and solutions
-- **Performance Tuning** - Optimization guide
+**Example - Good component structure:**
+```typescript
+// ❌ BAD: 500-line component doing everything
+export default function WhiteboardPage() {
+  // 500 lines of mixed concerns...
+}
 
-### Security (To Be Created)
-- **Security Guide** - RLS policies, anonymous access, input validation
-
-### Patterns & Best Practices
-- **[Critical Patterns](#-critical-patterns)** - See below for key patterns
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-**Required:**
-- Node.js ≥18.0.0
-- npm ≥9.0.0
-- Supabase account (free tier works)
-
-**Optional:**
-- Vercel account (for deployment)
-
-### Local Development
-
-**1. Clone and install:**
-```bash
-cd /Users/prathik-5897/Desktop/Projects/collaborative-whiteboard
-npm install
+// ✅ GOOD: Modular, focused components
+export default function WhiteboardPage() {
+  return (
+    <div>
+      <WhiteboardCanvas sessionCode={sessionCode} />
+      <ConnectionStatus sessionCode={sessionCode} />
+      <ParticipantList sessionCode={sessionCode} />
+    </div>
+  )
+}
 ```
 
-**2. Configure environment:**
+---
+
+### **TLDraw Integration**
+
+**❌ DON'T:**
+- Try to customize TLDraw's internal rendering (too complex)
+- Store canvas state in React state (use TLDraw's built-in store)
+- Sync every brush stroke (too much data, high latency)
+- Forget to handle TLDraw loading state
+
+**✅ DO:**
+- Use TLDraw's `onChange` prop for state sync (debounced every 500ms)
+- Store snapshots as JSON in Supabase (not the full TLDraw store)
+- Make canvas read-only when needed (no toolbar for viewers)
+- Test canvas performance with 10+ concurrent users
+
+**Example - Canvas sync pattern:**
+```typescript
+// ✅ GOOD: Debounced sync to avoid overwhelming Supabase
+const debouncedSync = useMemo(
+  () => debounce((snapshot) => {
+    supabase.from('sessions')
+      .update({ canvas_snapshot: snapshot })
+      .eq('code', sessionCode)
+  }, 500),
+  [sessionCode]
+)
+
+<Tldraw onChange={(editor) => {
+  const snapshot = editor.store.getSnapshot()
+  debouncedSync(snapshot)
+}} />
+```
+
+---
+
+### **Real-Time Features**
+
+**❌ DON'T:**
+- Poll the database (use Supabase Realtime subscriptions)
+- Forget to unsubscribe when component unmounts (memory leaks)
+- Send entire canvas state on every update (use diffs/deltas)
+- Ignore race conditions (multiple users updating simultaneously)
+
+**✅ DO:**
+- Subscribe to specific channels (`session:${sessionCode}`)
+- Clean up subscriptions in useEffect cleanup
+- Debounce rapid updates (canvas strokes)
+- Handle connection drops gracefully (reconnect logic)
+
+**Example - Realtime subscription:**
+```typescript
+// ✅ GOOD: Proper subscription with cleanup
+useEffect(() => {
+  const channel = supabase
+    .channel(`session:${sessionCode}`)
+    .on('broadcast', {
+      event: 'canvas_changes'
+    }, (payload) => {
+      // Update local state with new canvas
+      applyCanvasChanges(payload)
+    })
+    .subscribe()
+
+  return () => {
+    channel.unsubscribe() // Cleanup!
+  }
+}, [sessionCode])
+```
+
+---
+
+### **Database & Data Modeling**
+
+**❌ DON'T:**
+- Skip RLS policies (security vulnerability)
+- Store binary data in PostgreSQL (use Supabase Storage if needed)
+- Create tables without timestamps (always add created_at, updated_at)
+- Forget indexes on frequently queried columns
+
+**✅ DO:**
+- Use UUIDs for primary keys (not auto-increment integers)
+- Add foreign key constraints (maintain referential integrity)
+- Use JSONB for flexible data (canvas snapshots)
+- Test queries with EXPLAIN ANALYZE (check performance)
+
+**Schema guidelines:**
+```sql
+-- ✅ GOOD: Well-structured table
+CREATE TABLE sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  canvas_snapshot JSONB DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Enable RLS
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+
+-- Add RLS policy
+CREATE POLICY "Anyone can read active sessions"
+  ON sessions FOR SELECT
+  USING (status = 'active');
+
+-- Add indexes for common queries
+CREATE INDEX idx_sessions_code ON sessions(code);
+CREATE INDEX idx_sessions_status ON sessions(status) WHERE status = 'active';
+```
+
+---
+
+### **UI/UX Patterns**
+
+**❌ DON'T:**
+- Build complex layouts from scratch (use Tailwind components)
+- Forget loading states (users see blank screens)
+- Ignore mobile users (50% will use phones)
+- Make buttons/touch targets < 44px (accessibility)
+
+**✅ DO:**
+- Show skeleton screens while loading
+- Use optimistic updates (feel instant, confirm later)
+- Design mobile-first, enhance for desktop
+- Test on actual phones, not just browser DevTools
+
+**Loading state pattern:**
+```typescript
+// ✅ GOOD: Graceful loading with skeleton
+export function WhiteboardCanvas({ sessionCode }) {
+  const { data: session, isLoading } = useSession(sessionCode)
+
+  if (isLoading) {
+    return <WhiteboardSkeleton />
+  }
+
+  return <Tldraw snapshot={session.canvas_snapshot} />
+}
+```
+
+---
+
+## 🎨 Code Style & Quality Standards
+
+### **TypeScript**
+- **Always use TypeScript strict mode** (tsconfig.json: `"strict": true`)
+- Define interfaces for all props, API responses, database rows
+- Use type inference where obvious, explicit types where clarity matters
+- Avoid `any` type (use `unknown` if truly dynamic)
+
+**Example:**
+```typescript
+// ❌ BAD: Using 'any'
+function updateCanvas(data: any) { ... }
+
+// ✅ GOOD: Explicit types
+interface CanvasSnapshot {
+  shapes: TLDrawShape[]
+  timestamp: number
+}
+
+function updateCanvas(snapshot: CanvasSnapshot) { ... }
+```
+
+### **Naming Conventions**
+- **Components:** PascalCase (`WhiteboardCanvas.tsx`)
+- **Functions:** camelCase (`generateSessionCode`)
+- **Constants:** SCREAMING_SNAKE_CASE (`MAX_PARTICIPANTS_PER_SESSION`)
+- **Database tables:** snake_case (`sessions`, `participants`)
+- **Files:** kebab-case for utilities (`session-code.ts`)
+
+### **File Organization**
+```
+app/
+├── page.tsx                # Landing page (Create button)
+├── board/
+│   └── page.tsx            # Whiteboard canvas page
+├── api/
+│   └── sessions/
+│       └── route.ts        # API endpoints
+components/
+├── WhiteboardCanvas.tsx    # tldraw integration
+├── ConnectionStatus.tsx    # Connection indicator
+└── ParticipantList.tsx     # List of participants
+hooks/
+├── useCreateSession.ts     # Session creation hook
+├── useBroadcastChannel.ts  # Real-time subscription
+└── useSession.ts           # Fetch session data
+lib/
+├── supabase.ts             # Supabase client
+types/
+└── database.types.ts       # Generated from Supabase
+utils/
+└── sessionCode.ts          # Session code generation
+```
+
+### **Comments & Documentation**
+- **When to comment:** Complex logic, non-obvious decisions, workarounds, TODOs
+- **When NOT to comment:** Obvious code, redundant explanations
+
+```typescript
+// ❌ BAD: Stating the obvious
+// Set session code to 'happy-tiger'
+setSessionCode('happy-tiger')
+
+// ✅ GOOD: Explaining WHY
+// Use memorable animal-based codes instead of random strings
+// so users can verbally share codes with study group members
+setSessionCode(generateSessionCode())
+```
+
+---
+
+## 🧪 Testing Requirements
+
+### **What MUST be tested:**
+- API routes (request validation, error handling)
+- Database queries (correct data returned, RLS policies work)
+- Real-time sync (messages received, state updates correctly)
+- Edge cases (empty states, max capacity, network failures)
+
+### **What CAN be tested later:**
+- UI components (snapshot tests)
+- E2E flows (Playwright tests)
+
+### **Testing stack:**
+- **Unit tests:** Jest + @testing-library/react
+- **Integration tests:** Jest + Supabase test client
+- **E2E tests:** Playwright (Phase 2)
+
+**Example test:**
+```typescript
+// hooks/useCreateSession.test.ts
+import { describe, it, expect } from '@jest/globals'
+import { renderHook, waitFor } from '@testing-library/react'
+import { useCreateSession } from './useCreateSession'
+
+describe('useCreateSession', () => {
+  it('creates session with valid code format', async () => {
+    const { result } = renderHook(() => useCreateSession())
+
+    await waitFor(() => {
+      expect(result.current.session).toBeDefined()
+      expect(result.current.session.code).toMatch(/^[a-z]+-[a-z]+$/)
+    })
+  })
+
+  it('handles collision by retrying', async () => {
+    // Test retry logic when code already exists
+    const { result } = renderHook(() => useCreateSession())
+
+    await waitFor(() => {
+      expect(result.current.session).toBeDefined()
+      expect(result.current.error).toBeNull()
+    })
+  })
+})
+```
+
+---
+
+## 🚀 Performance Guidelines
+
+### **Critical Metrics:**
+- **Canvas sync latency:** < 100ms (user draws → others see)
+- **Page load time:** < 2 seconds (Time to Interactive)
+- **Supported concurrent users:** 30 users per session
+
+### **Optimization Strategies:**
+- **Debounce rapid updates** (canvas strokes every 500ms, not 60Hz)
+- **Use React.memo for expensive components** (WhiteboardCanvas)
+- **Lazy load routes** (use Next.js dynamic imports)
+- **Monitor bundle size** (keep under 500KB initial load)
+
+### **When to optimize:**
+- ✅ Profile FIRST, optimize SECOND (use Chrome DevTools Performance tab)
+- ✅ Measure actual impact (before/after metrics)
+- ❌ Don't premature optimize (avoid complexity for <10% gains)
+
+---
+
+## 🛡️ Security & Privacy
+
+### **CRITICAL: Never Do This**
+- ❌ Expose Supabase anon key in Git (use environment variables)
+- ❌ Store sensitive data in localStorage (session codes are okay)
+- ❌ Trust client-side data (always validate server-side)
+- ❌ Skip input sanitization (prevent XSS)
+
+### **MUST Do This**
+- ✅ Use environment variables for all secrets (`.env.local`, NOT committed)
+- ✅ Validate ALL user inputs with Zod schemas
+- ✅ Enable RLS on ALL Supabase tables
+- ✅ Sanitize user-generated content (nicknames)
+- ✅ Rate limit session creation (5 per minute per device)
+
+**Environment variables:**
 ```bash
-# .env.local (create from .env.local.example)
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+# .env.local (NEVER commit this file)
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
 ```
 
-See [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) for detailed database setup.
+**Input validation:**
+```typescript
+// ✅ GOOD: Validate with Zod
+import { z } from 'zod'
 
-**3. Run development server:**
-```bash
-npm run dev
+const CreateSessionSchema = z.object({
+  nickname: z.string().min(1).max(50).optional(),
+  device_id: z.string().uuid()
+})
 
-# Or with watch mode:
-npm run dev:watch
+export async function POST(request: Request) {
+  const body = await request.json()
+  const result = CreateSessionSchema.safeParse(body)
+
+  if (!result.success) {
+    return Response.json({ error: result.error }, { status: 400 })
+  }
+
+  // Now safe to use result.data
+}
 ```
-
-Access at: http://localhost:3000
-
-**4. Run tests:**
-```bash
-npm test              # Run test suite (empty - needs writing!)
-npm run test:watch   # Watch mode
-```
-
-### Verification Checklist
-
-After setup, verify everything works:
-- [ ] Development server starts without errors
-- [ ] Can access http://localhost:3000
-- [ ] TypeScript compiles (npm run type-check)
-- [ ] Can create a session (click "Create Whiteboard")
-- [ ] Can draw on canvas
-- [ ] Can share code and join from another browser tab
-
-### Server Troubleshooting
-
-**Is the server healthy?**
-```bash
-# Quick health check
-curl -I http://localhost:3000
-
-# Should return: HTTP 200 (healthy)
-# If returns: 503 or hangs = server is stuck
-```
-
-**Server hung or returning errors?**
-```bash
-# Stop and restart development server
-pkill -f "next dev" && npm run dev
-```
-
-**Canvas not loading or real-time not working?**
-1. Check browser console for errors
-2. Verify `.env.local` has correct Supabase credentials
-3. Check Supabase dashboard > Realtime settings (must be enabled)
-4. Verify migrations were applied: Check Supabase SQL Editor
-
-**More help:** See [`QUICKSTART.md`](QUICKSTART.md#troubleshooting) for common issues.
-
----
-
-## 🚢 Production Deployment
-
-### ⚠️ Pre-Production Checklist (NOT READY YET)
-
-**CRITICAL: Do not deploy to production until these are complete:**
-- [ ] Test suite written (target: ≥80% coverage)
-- [ ] Error boundaries implemented
-- [ ] Mobile device testing complete
-- [ ] Rate limiting added (session creation, broadcast)
-- [ ] Error handling hardened (Supabase failures, network issues)
-- [ ] Staging environment tested (Vercel preview)
-
-### Deployment Overview
-
-**Platform:** Vercel (recommended)
-**Status:** Ready for staging deployment, NOT production
-
-### Pre-Deployment Checklist
-
-**1. Verify Local Build:**
-```bash
-npm run type-check   # Must succeed with 0 TypeScript errors
-npm test             # Must pass (≥80% tests passing)
-npm run lint         # Must pass with 0 errors
-npm run build        # Must succeed
-```
-
-**2. Verify Environment:**
-```bash
-# Check .env.local has correct values
-cat .env.local
-
-# Verify Supabase migrations are applied
-# Check Supabase dashboard > Database > Tables
-# Should see: sessions, participants
-```
-
-**3. Commit and Push:**
-```bash
-git status       # Review changes
-git add .
-git commit -m "feat: your changes
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
-git push origin main
-```
-
-**4. Deploy to Vercel:**
-```bash
-# First time: Link project
-vercel
-
-# Production deployment
-vercel --prod
-
-# Or preview deployment (recommended first)
-vercel
-```
-
-**5. Configure Vercel Environment Variables:**
-In Vercel dashboard > Settings > Environment Variables:
-```
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
-```
-
-**6. Verify Deployment:**
-```bash
-curl -I https://your-app.vercel.app
-# Should return: HTTP/2 200
-```
-
-### Deployment Architecture
-
-**Vercel Configuration:**
-- **Framework:** Next.js (auto-detected)
-- **Build Directory:** Root directory
-- **Install Command:** `npm install` (default)
-- **Build Command:** `npm run build` (default)
-- **Output Directory:** `.next` (auto-detected)
-
-**Environment Variables Required:**
-- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key (public, safe to expose)
-
-**Database Strategy:**
-- **Separate Supabase project** (not shared with classroom-thinking-capture)
-- Independent scaling and monitoring
-- No cross-project dependencies
-- Migrations applied manually via Supabase dashboard
-
-### Troubleshooting Deployment Failures
-
-**Error: "Module not found: Can't resolve 'lib/supabase'"**
-- **Cause:** TypeScript path alias not resolved during build
-- **Fix:** Verify `tsconfig.json` has `"baseUrl": "."` and `"paths": { "@/*": ["./*"] }`
-
-**Error: "tldraw styles not loading"**
-- **Cause:** CSS import missing or incorrect
-- **Fix:** Verify `app/globals.css` imports `@tldraw/tldraw/tldraw.css`
-
-**Build succeeds locally but fails on Vercel:**
-- **Likely Cause:** Environment variables missing
-- **Fix:** Add `NEXT_PUBLIC_SUPABASE_*` to Vercel environment variables
-
-**Real-time sync not working in production:**
-- **Cause:** Supabase Realtime not enabled or wrong project
-- **Fix:** Check Supabase dashboard > Settings > API > Realtime enabled
-
-### Rollback Procedure
-
-If deployment fails:
-```bash
-# Option 1: Revert commit
-git revert HEAD && git push origin main
-
-# Option 2: Vercel rollback
-# Go to Vercel dashboard > Deployments > Previous deployment > Promote to Production
-```
-
-### Additional Resources
-
-- **[Deployment Guide](DEPLOYMENT.md)** - Detailed Vercel deployment with monitoring
-- **[Supabase Setup](SUPABASE_SETUP.md)** - Database configuration
-
----
-
-## 🔐 Privacy & Data Policy
-
-### Data We Collect
-- **Session Data:** Session codes, timestamps, canvas snapshots (for late-joiner recovery)
-- **Participant Data:** Anonymous device IDs (client-generated UUID), optional nicknames, connection status
-- **Canvas Data:** User-created drawings, text, shapes (session-scoped, ephemeral)
-- **Technical Data:** Error logs, performance metrics (anonymized, no PII)
-
-### How We Use Data
-- **Real-time Synchronization:** Broadcast canvas changes to all session participants
-- **Session Management:** Track active sessions, participant connections, session expiration
-- **Late-Joiner Recovery:** Store canvas snapshots so new participants see current state
-- **Performance Optimization:** Analyze broadcast patterns, identify bottlenecks (aggregate only)
-- **Error Tracking:** Debug production issues using anonymized error reports
-
-### Data Access & Privacy Guarantees
-- **Anonymous by Default:** No accounts required, no email collection, no personal information
-- **Session Isolation:** Participants can only access data from their current session (enforced by RLS)
-- **No User Tracking:** No analytics, no cookies (except session storage for device ID)
-- **Device ID Privacy:** Generated client-side, never linked to personal information
-
-### Data Retention & Deletion
-- **Active Sessions:** Canvas data available while session is active
-- **Ended Sessions:** Canvas snapshots deleted immediately when session ends
-- **Ephemeral by Design:** No long-term storage, no archives, no lesson plans (unlike classroom app)
-- **Error Logs:** Retained for 30 days (anonymized, no PII)
-
-### Third-Party Services
-- **Supabase:** Database, real-time subscriptions (SOC 2 compliant, GDPR ready)
-- **Vercel:** Hosting, CDN (GDPR compliant, EU/US data centers)
-- **No Analytics:** We do not use Google Analytics, Facebook Pixel, or any tracking scripts
-- **No Data Selling:** We never sell, rent, or share user data with third parties
-
-### Legal Compliance
-- **GDPR Ready:** No personal data collected, no consent required
-- **COPPA Compliant:** No personal information collected from anyone (including under 13)
-- **Educational Use:** Designed for classroom use under school's existing privacy policies
-- **Data Encryption:** All data encrypted in transit (TLS) and at rest (AES-256)
-
-### User Rights
-- **Students:** No account required, data deleted when session ends, nothing to export
-- **Transparency:** Source code available for audit (open development)
-
----
-
-## 💻 Code Conventions
-
-### Type Safety (Zero Tolerance)
-- **TypeScript strict mode** - `strict: true` in tsconfig, no exceptions
-- **No `any` types** - Use `unknown` and narrow with type guards, or fix the types
-- **Explicit return types** - All exported functions must declare return types
-- **Branded types** - Use branded types for domain concepts (e.g., `SessionCode`, not `string`)
-- **Exhaustive checks** - Use `never` to ensure switch statements are exhaustive
-
-### Architecture (Separation of Concerns)
-- **Business logic in hooks** - `useXxx.ts` files contain logic, components render
-- **Pure utility functions** - Utils take inputs, return outputs, no side effects
-- **Single Responsibility** - Files do one thing. Split when they do two things.
-- **Dependency direction** - Components → hooks → utils → Supabase client
-- **Absolute imports** - Use `@/components/...`, never relative paths beyond parent directory
-
-### Error Handling (No Silent Failures)
-- **Never swallow errors** - Log and handle, or propagate. No empty catch blocks.
-- **User-facing errors** - Show actionable messages ("Session expired. Try creating a new one") not stack traces
-- **Error boundaries** - Wrap canvas with error boundary, provide "Something went wrong" fallback
-- **Async error handling** - All promises must have `.catch()` or `try/catch`, no unhandled rejections
-- **Logging context** - Include session code, device ID, timestamp in error logs
-
-### Testing (No Untested Code Ships)
-- **Test-Driven Development** - Write failing test first, watch it fail, implement, watch it pass
-- **Coverage requirements** - Business logic ≥80%, UI components ≥60%, utils 100%
-- **Test user behavior** - Test what users see and do, not implementation details
-- **Integration over unit** - Prefer integration tests (realistic) over isolated unit tests (fragile)
-- **E2E for critical paths** - Session creation, canvas sync, late-joiner recovery must have E2E tests
-
-### Performance (Ship Fast Code)
-- **Measure before optimizing** - Use React DevTools Profiler, identify real bottlenecks
-- **Memoize expensive computations** - Use `useMemo` for expensive calculations, `React.memo` for canvas components
-- **Debounce broadcasts** - Broadcast canvas changes at max 60Hz (already implemented in tldraw)
-- **Lazy load routes** - Use `React.lazy()` and `Suspense` for future phases
-- **Monitor bundle size** - Keep main bundle <500KB (currently: ~442KB)
-
-### Security (Assume Breach)
-- **Validate all inputs** - Client-side AND server-side validation, trust nothing
-- **Sanitize user content** - Escape HTML in nicknames, prevent XSS
-- **Use RLS policies** - Database enforces access control, never trust client
-- **Rate limiting** - Session creation must have rate limits (5 per minute per device)
-- **Anonymous security** - Device IDs are UUIDs (not predictable), session codes are random
-
-### Accessibility (Everyone Uses This)
-- **Keyboard navigation** - Canvas tools must be keyboard accessible
-- **ARIA labels** - Buttons and tools need descriptive labels
-- **Color contrast** - Minimum WCAG AA (4.5:1 for text, 3:1 for UI components)
-- **Focus indicators** - Visible focus states on all interactive elements
-- **Screen reader testing** - Test with VoiceOver (macOS) or NVDA (Windows)
-
-### Code Quality (Consistent Style)
-- **ESLint + Prettier** - Auto-format on save, pre-commit hooks enforce rules
-- **No console.log in production** - Use proper logging utilities or remove
-- **No commented-out code** - Delete it. Git remembers. Dead code is noise.
-- **No magic numbers** - Extract to named constants (`BROADCAST_THROTTLE_MS = 16`)
-- **Descriptive names** - `isSessionActive` not `check()`, `generateSessionCode` not `gen()`
-
-### Documentation (Code Explains How, Comments Explain Why)
-- **Self-documenting code** - Good names > comments. Write clear code first.
-- **Comment non-obvious decisions** - Explain WHY you chose this approach, not WHAT the code does
-- **JSDoc for public APIs** - Exported functions and complex types get JSDoc with examples
-- **README for features** - Non-trivial features get a README explaining architecture
-- **Update docs when code changes** - Stale docs are worse than no docs
-
-### Refactoring (Continuous Improvement)
-- **Boy Scout Rule** - Leave code better than you found it
-- **Extract when duplicated** - Third instance of similar code gets extracted to a function
-- **Inline when unused** - Abstractions used once should be inlined
-- **Rename without fear** - Bad names should be fixed immediately, IDE handles renames
-- **Delete aggressively** - Dead code, unused features, abandoned experiments must go
-
-### Code Review (Gate to Production)
-- **All code is reviewed** - No direct pushes to main, all changes via PR
-- **Review for correctness** - Does it work? Are edge cases handled? What breaks?
-- **Review for security** - Input validation? XSS? RLS policies correct?
-- **Review for performance** - Unnecessary re-renders? N+1 queries? Bundle bloat?
-- **Review for maintainability** - Can the next developer understand this in 6 months?
-
-### File Naming & Organization
-- **Components:** `PascalCase.tsx` (e.g., `WhiteboardCanvas.tsx`)
-- **Hooks:** `camelCase.ts` with `use` prefix (e.g., `useCreateSession.ts`)
-- **Utils:** `camelCase.ts` (e.g., `sessionCode.ts`)
-- **Types:** `PascalCase.ts` or co-located with implementation (e.g., `database.types.ts`)
-- **Tests:** `ComponentName.test.tsx` or `feature.spec.ts`
-- **Feature folders:** Group related files when needed (currently flat structure is fine)
 
 ---
 
 ## 🔒 Critical Patterns
 
-**8 battle-tested patterns from building this project and classroom-thinking-capture.**
+**8 battle-tested patterns from building this project.**
 
 ### Quick Reference
 
@@ -777,307 +830,413 @@ useEffect(() => {
 
 ---
 
-## 🛠️ Common Tasks
+## 🔄 Karpathy-Inspired AI Collaboration Principles
 
-### "I need to add a new feature"
-1. Check roadmap: See "Phase 2-5" in [Current Status](#-current-status) section
-2. Review patterns: See [Critical Patterns](#-critical-patterns) above
-3. Find relevant files: See [Project Structure](#project-structure) in README
-4. Write tests first (TDD), implement, update docs
+### **1. Don't Assume - Seek Clarification**
 
-### "I need to modify real-time sync"
-→ `components/WhiteboardCanvas.tsx` (tldraw integration)
-→ `hooks/useBroadcastChannel.ts` (Supabase Realtime subscription)
-→ See [Pattern 1: tldraw Store Listener](#pattern-1-tldraw-store-listener)
+**Problem:** AI often makes assumptions silently and runs with them.
 
-### "I need to add a database table"
-1. Create migration: `supabase/migrations/00X_description.sql`
-2. Add RLS policies (anonymous access pattern)
-3. Add `NOTIFY pgrst, 'reload schema';` at end
-4. Apply via Supabase dashboard > SQL Editor
-5. Update `types/database.types.ts` with new types
+**Solution:** Force explicit confirmation on ambiguous requirements.
 
-### "I need to deploy to production"
-⚠️ **CRITICAL: Not ready for production yet. See [Pre-Production Checklist](#️-pre-production-checklist-not-ready-yet)**
+```typescript
+// ❌ BAD: Claude assumes implementation
+"Add a participant list"
 
-When ready:
+// ✅ GOOD: Explicit requirements
+"Add a participant list with these specs:
+- Show all active participants in current session
+- Display nickname (or 'Anonymous' if not set)
+- Show connection status (green dot = online)
+- Real-time updates when participants join/leave
+- Storage: participants table in Supabase
+Should I proceed with this design?"
+```
+
+**Prompt template for Claude:**
+```
+Before implementing [feature], confirm:
+1. What data structure should I use?
+2. Where should state live (client/server)?
+3. What are the edge cases I should handle?
+4. Are there any existing patterns in the codebase I should follow?
+```
+
+---
+
+### **2. Surface Tradeoffs - No Silent Choices**
+
+**Problem:** AI picks an approach without explaining alternatives.
+
+**Solution:** Ask Claude to present options with pros/cons.
+
+```typescript
+// ❌ BAD: Claude just implements
+"Add real-time canvas sync"
+
+// ✅ GOOD: Request tradeoff analysis
+"Add real-time canvas sync. Present 3 approaches:
+1. Supabase Realtime (pros/cons)
+2. Socket.io (pros/cons)
+3. WebRTC (pros/cons)
+Recommend one based on our requirements (30 concurrent users, <100ms latency)"
+```
+
+**Example output:**
+```
+Option 1: Supabase Realtime
+✅ Pros: Built-in, no extra server, automatic reconnection
+❌ Cons: Potential latency with 30+ subscribers, rate limits
+
+Option 2: Socket.io
+✅ Pros: Low latency, full control, scales well
+❌ Cons: Need to deploy separate server, more complexity
+
+Option 3: WebRTC
+✅ Pros: Peer-to-peer, lowest latency possible
+❌ Cons: Complex signaling, doesn't work behind firewalls
+
+Recommendation: Start with Supabase Realtime (Option 1) for MVP.
+If we hit performance issues, migrate to Socket.io in Phase 2.
+```
+
+---
+
+### **3. Goal-Driven Execution - Outcomes, Not Steps**
+
+**Problem:** Telling AI "how" constrains its problem-solving.
+
+**Solution:** Define success criteria and let AI figure out "how".
+
+```typescript
+// ❌ BAD: Imperative instructions
+"Create a function that loops through participants, filters by online status,
+ maps to their nicknames, then returns an array"
+
+// ✅ GOOD: Declarative goal with verification
+"Write a function that returns nicknames of online participants.
+Test it with this data: [...]
+Expected output: ['Alice', 'Bob']
+Include error handling for empty arrays."
+```
+
+**Goal-driven prompting template:**
+```
+Goal: [What should be achieved]
+Success criteria: [How to verify it works]
+Constraints: [What to avoid]
+Verification: [How Claude should test it]
+```
+
+---
+
+### **4. Minimize Scope - Simple Before Complex**
+
+**Problem:** AI over-engineers solutions (1000 lines when 100 would do).
+
+**Solution:** Explicitly request minimal implementation first.
+
+```typescript
+// ❌ BAD: Open-ended request
+"Build a participant management system"
+
+// ✅ GOOD: Minimal scope with expansion path
+"Build a minimal participant list with ONLY:
+- Display nicknames of all participants
+- Show connection status (green/yellow dot)
+- Real-time updates when someone joins/leaves
+
+No animations, no settings, no historical data.
+We'll add features incrementally after testing.
+
+Keep the component under 150 lines."
+```
+
+**Scope control phrases:**
+- "Simplest possible implementation"
+- "MVP version only"
+- "No abstractions yet"
+- "If it requires >200 lines, we're over-engineering"
+
+---
+
+## 🤖 Working with Claude Code
+
+### **Session Management:**
+
+**Start complex features with Plan Mode:**
 ```bash
-# Verify build and tests pass
-npm run type-check && npm test && npm run build
+# Shift+Tab twice to enter Plan mode
+> I need to add participant presence tracking. Can you create a plan?
 
-# Deploy to Vercel staging first
-vercel
+Claude generates plan...
 
-# After testing staging, deploy to production
-vercel --prod
+# Review plan, refine until solid
+> Looks good, but use Supabase Presence instead of manual tracking
+
+Claude updates plan...
+
+# Switch to implementation
+> Implement this plan
+
+Claude executes without further input
 ```
 
-See: [Production Deployment](#-production-deployment) section above
-→ [`DEPLOYMENT.md`](DEPLOYMENT.md)
-
-### "I need help troubleshooting"
-→ [`QUICKSTART.md`](QUICKSTART.md#troubleshooting)
-→ See [Server Troubleshooting](#server-troubleshooting) section above
-
-### "I need to optimize performance"
-→ Use React DevTools Profiler to identify bottlenecks
-→ Check tldraw docs for performance tips: https://tldraw.dev/docs/performance
-
----
-
-## 🎯 Key Principles
-
-### Product Values
-1. **Free and Accessible** - No accounts, no paywalls, no friction. Just create and share.
-2. **Real-time Collaboration** - All participants see changes instantly. No refresh needed.
-3. **Privacy by Design** - Anonymous by default. Data deleted when session ends. No tracking.
-
-### Development Practices
-4. **Test-Driven Development** - Write failing tests first, then implement. No exceptions.
-5. **Security by Design** - Use RLS policies, validate inputs, rate limit operations.
-6. **Simple Over Clever** - Solve today's problem clearly. Future complexity earns its place.
-
-### Process Philosophy
-7. **Systematic Workflows** - Follow established patterns. Don't improvise critical paths.
-8. **Incremental Change** - Ship small, test often, iterate quickly.
-9. **Document Learnings** - Capture mistakes in session summaries. History prevents repetition.
-
----
-
-## 📝 Development Workflow
-
-### Before Starting Work
+**Use custom skills:**
 ```bash
-git pull origin main && git status && npm run type-check && npm test
-```
+# Create a session summary
+/session-summary participant-presence
 
-### Branch Naming
-- Feature: `feature/templates` (for Phase 2)
-- Fix: `fix/canvas-sync-issue`
-- Refactor: `refactor/broadcast-hook`
+# Get Next.js guidance
+/nextjs-app-router
 
-### Commits
-Use conventional format:
-```
-feat|fix|test|docs|chore: description
-
-[Optional body explaining WHY this change was needed]
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-```
-
-Examples:
-```
-feat: add brainstorm template with sticky notes
-
-fix: prevent duplicate broadcasts on rapid drawing
-
-test: add E2E test for late-joiner canvas sync
-
-docs: update QUICKSTART with mobile troubleshooting
-```
-
-### Pull Requests
-- Title: `feat: add brainstorm template` (conventional commit format)
-- Include: Testing notes, screenshots (if UI), breaking changes
-- Link to: Related issues or project board
-
-### Session Summaries
-Create summaries in `docs/session-summaries/YYYY-MM-DD-brief-description.md`
-
-**Template:**
-```markdown
-# [Brief Description]
-
-**Date:** YYYY-MM-DD
-**Status:** Complete/In Progress
-
-## Summary
-[2-3 paragraphs describing what was accomplished]
-
-## Changes
-- [Change 1]
-- [Change 2]
-
-## Testing
-- [Test results]
-- [Coverage metrics]
-
-## Learnings
-- [Key lesson 1: What went wrong and how we fixed it]
-- [Key lesson 2: Pattern discovered that should be reused]
-
-## Next Steps
-- [Next task]
+# Get Supabase help
+/supabase-postgres
 ```
 
 ---
 
-## 📊 Project Metrics
+## 🔄 Complete Development Workflow
 
-### Current Stats (2026-02-07)
-- **Lines of Code:** ~500 (very lean)
-- **Test Coverage:** 0% (⚠️ BLOCKER - needs 80%+ before production)
-- **Tests Passing:** 0/0 (no tests written yet)
-- **Build Time:** ~20-30s (typical Next.js)
-- **Bundle Size:** ~442 KB (package-lock.json size, lean dependencies)
-- **TypeScript Errors:** 0 (strict mode passing)
+### **The 5-Phase System**
 
-### Performance Targets
-- **Initial Load:** <2s (on 3G)
-- **Time to Interactive:** <3s (on 3G)
-- **Canvas Sync Latency:** <100ms (typical on good connection)
-- **Lighthouse Score:** ≥90 (not measured yet)
-
-### Quality Gates (Must Pass Before Production)
-- [ ] TypeScript: 0 errors ✅ (passing)
-- [ ] Tests: ≥80% passing ⚠️ (no tests yet)
-- [ ] Coverage: ≥80% ⚠️ (no coverage yet)
-- [ ] Lint: 0 errors ✅ (passing)
-- [ ] Build: Success ✅ (passing)
-
----
-
-## 🤝 Contributing
-
-### Getting Help
-- **Documentation:** Check README, QUICKSTART, SUPABASE_SETUP, DEPLOYMENT guides
-- **Issues:** (Create GitHub repo and add issue tracker link)
-- **Questions:** (Add contact method or discussions link)
-
-### Reporting Bugs
-Include:
-1. Steps to reproduce
-2. Expected behavior
-3. Actual behavior
-4. Environment (OS, browser, Node version)
-5. Screenshots or error messages
-
-### Suggesting Features
-Include:
-1. Problem statement (what user need is unmet?)
-2. Proposed solution (how would it work?)
-3. Alternatives considered (what else did you think of?)
-4. Impact assessment (who benefits? how much effort?)
-
----
-
-## 🔄 Relationship to Classroom App
-
-This project is **separate and independent** from the classroom-thinking-capture production app.
-
-### Key Differences
-
-| Feature | Classroom App | Whiteboard App |
-|---------|---------------|----------------|
-| **Primary User** | Teachers | Students |
-| **Default Mode** | Teacher draws, students view | Everyone draws |
-| **Authentication** | Required for teachers | None (anonymous) |
-| **Session Type** | Classroom-only | Study groups (default) |
-| **Privacy** | Student notes hidden from teachers | No notes feature |
-| **Features** | Polls, Q&A, understanding meters | Templates & prompts (coming) |
-| **Database** | Shared Supabase | Separate Supabase |
-| **Deployment** | classroom-thinking-capture.vercel.app | (new URL TBD) |
-
-### Shared Patterns
-- Session code generation (adjective-animal format)
-- Supabase Realtime broadcast pattern
-- RLS security approach
-- TypeScript strict mode conventions
-- Test-driven development methodology
-
-### Why Separate?
-- **Zero production risk:** Changes to whiteboard don't affect classroom app
-- **Independent scaling:** Different usage patterns and load
-- **Faster iteration:** No need to coordinate with classroom app releases
-- **Different roadmap:** Templates and prompts vs classroom features
-
----
-
-## 📋 Project Structure
+This project uses a systematic workflow with 6 custom skills and automation scripts. Every feature follows the same path for consistent quality:
 
 ```
-collaborative-whiteboard/
-├── app/                           # Next.js App Router
-│   ├── page.tsx                   # Landing page (Create button)
-│   ├── board/page.tsx             # Whiteboard canvas page
-│   ├── layout.tsx                 # Root layout
-│   └── globals.css                # Global styles + tldraw CSS
-│
-├── components/
-│   └── WhiteboardCanvas.tsx       # tldraw integration + real-time sync
-│
-├── hooks/                         # Custom React hooks
-│   ├── useCreateSession.ts        # Creates new session in database
-│   └── useBroadcastChannel.ts     # Manages Supabase Realtime subscription
-│
-├── lib/
-│   └── supabase.ts                # Supabase client configuration
-│
-├── types/
-│   └── database.types.ts          # TypeScript interfaces for DB schema
-│
-├── utils/
-│   └── sessionCode.ts             # Session code generation (adjective-animal)
-│
-├── supabase/
-│   └── migrations/
-│       ├── 001_initial_schema.sql # sessions + participants tables
-│       ├── 002_rls_policies.sql   # RLS policies for anonymous access
-│       └── 003_realtime_setup.sql # Realtime configuration
-│
-├── docs/                          # Documentation
-│   └── session-summaries/         # Development session summaries
-│
-├── Configuration Files
-│   ├── package.json               # Dependencies + build scripts
-│   ├── tsconfig.json              # TypeScript strict mode
-│   ├── tailwind.config.ts         # Tailwind CSS config
-│   ├── next.config.ts             # Next.js config (tldraw transpile)
-│   ├── postcss.config.mjs         # PostCSS plugins
-│   ├── .eslintrc.json             # ESLint rules
-│   └── .gitignore
-│
-└── Documentation Files
-    ├── README.md                  # Project overview
-    ├── QUICKSTART.md              # 10-minute setup guide
-    ├── SUPABASE_SETUP.md          # Detailed Supabase instructions
-    ├── DEPLOYMENT.md              # Vercel deployment guide
-    ├── PROJECT_SUMMARY.md         # Comprehensive project summary
-    └── CLAUDE.md                  # This file (AI assistant context)
+Design → Decompose → Execute → Verify → Document → Ship
 ```
 
+**Quick start for new features:**
+```bash
+# 1. Initialize workflow
+npm run feature start "feature name"
+
+# 2. Design phase
+/structured-design-thinking "feature name"
+
+# 3. Move to next phase
+npm run feature next
+
+# 4. Decomposition phase
+/task-decomposition "feature name"
+
+# 5. Move to execution
+npm run feature next
+
+# 6. Execute systematically
+/systematic-execution "feature name"
+# For each task: Write code → /self-verification → Present
+
+# 7. Run automated checks
+npm run feature verify
+
+# 8. Full verification
+npm run feature next
+/pre-ship-review "feature name"
+
+# 9. Document learnings
+npm run feature next
+/session-summary "feature name"
+
+# 10. Finish
+npm run feature finish
+```
+
+### **The 6 Skills**
+
+**1. `/structured-design-thinking` - Design Phase (15-30 min)**
+- Analyzes codebase patterns
+- Creates design doc with success criteria
+- Documents architectural decisions
+- Output: `docs/plans/<feature>-design.md`
+
+**2. `/task-decomposition` - Decompose Phase (10-15 min)**
+- Breaks feature into 2-5 minute tasks
+- Orders by dependencies
+- Includes verification steps
+- Output: Task list (not a file)
+
+**3. `/systematic-execution` - Execute Phase (1-6 hours)**
+- One task at a time
+- Uses `/self-verification` per task
+- Tracks progress
+- Maintains focus
+
+**4. `/self-verification` - During Execution (per task)**
+- **Code-level verification (MICRO)**
+- 6 layers: Syntax, tests, build, manual, edge cases, security
+- Used AFTER writing each code snippet
+- Catches 95% of bugs before user sees them
+
+**5. `/pre-ship-review` - Verify Phase (30-90 min)**
+- **Feature-level verification (MACRO)**
+- 8 layers: Integration, patterns, security, performance, build, testing, accessibility, deployment
+- Used AFTER all tasks complete
+- Must pass ALL layers to ship
+
+**6. `/session-summary` - Document Phase (15-30 min)**
+- Creates session summary
+- Documents decisions and learnings
+- Updates project docs
+- Output: `docs/session-summaries/<date>-<feature>.md`
+
+### **Two-Level Verification**
+
+```
+┌─────────────────────────────────────────┐
+│ During Execution (MICRO)                │
+│ Write code → /self-verification         │
+│ ✅ Verifies: Code snippets work         │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│ After All Tasks (MACRO)                 │
+│ All tasks done → /pre-ship-review       │
+│ ✅ Verifies: Feature integration works  │
+└─────────────────────────────────────────┘
+```
+
+### **Automation Commands**
+
+```bash
+# Workflow management
+npm run feature start "name"    # Start new feature
+npm run feature next            # Move to next phase
+npm run feature status          # Show current state
+npm run feature verify          # Run automated checks
+npm run feature finish          # Mark complete
+npm run feature reset           # Reset state
+
+# Quick verification
+npm run verify                  # Same as feature verify
+```
+
+### **State Tracking**
+
+Workflow state stored in `.workflow/` directory (gitignored):
+- `current-feature.txt` - Feature name
+- `current-phase.txt` - Current phase (design/decompose/execute/verify/document)
+- `started-at.txt` - Start timestamp
+
+On finish, state archived to `.workflow/archive/`.
+
+### **Complete Documentation**
+
+See **docs/WORKFLOWS.md** for:
+- Detailed phase-by-phase guide
+- Real-world examples (with timelines)
+- Troubleshooting common issues
+- Best practices
+- Success metrics
+
+**Time investment:**
+- Setup: Already done! ✅
+- Per feature overhead: 15-30 minutes
+- Time savings: 5-9 hours per feature (prevents rework, catches bugs early)
+- Break-even: After 2-3 features
+
 ---
 
-## 📦 Tech Stack
+## 📋 Pre-Flight Checklist
 
-### Frontend
-- **Framework:** Next.js 15.1.6 (App Router)
-- **UI Library:** React 18.3.1
-- **Language:** TypeScript 5.x (strict mode)
-- **Canvas:** tldraw 2.4.6 (CRDT-based collaborative whiteboard)
-- **Styling:** Tailwind CSS 3.4.1
+### **Before committing code, verify:**
+- [ ] TypeScript compiles without errors (`npm run type-check`)
+- [ ] Tests pass (`npm run test`)
+- [ ] No console.log statements (use proper logging)
+- [ ] No commented-out code (delete it, Git remembers)
+- [ ] Environment variables not hardcoded
+- [ ] Mobile responsive (test on real device if possible)
+- [ ] Supabase RLS policies tested (try accessing data as different users)
 
-### Backend & Database
-- **Database:** Supabase (PostgreSQL) with Row-Level Security
-- **Real-time:** Supabase Realtime (WebSocket broadcast)
-- **Authentication:** Anonymous (device-based UUID)
-- **Session Management:** Device ID + session code
-
-### Development & Testing
-- **Testing:** Jest 29.7.0 + @testing-library/react 14.1.2
-- **Linting:** ESLint 8.x with Next.js config
-- **Type Checking:** TypeScript strict mode
-
-### Hosting
-- **Recommended:** Vercel (auto-detects Next.js)
-- **Alternative:** Netlify, self-hosted Node.js
+### **Before deploying to production:**
+- [ ] Database migrations tested on staging
+- [ ] Error boundaries implemented
+- [ ] Load testing completed (simulate 30 concurrent users)
+- [ ] Mobile testing on real devices
+- [ ] Rate limiting configured
+- [ ] Monitoring configured (Vercel analytics)
 
 ---
 
-**Last Updated:** 2026-02-07 (Phase 1 MVP Complete)
+## 📚 Resources & References
 
-**Recent Session Summaries:**
-- [Phase 1 Complete](PROJECT_SUMMARY.md) - Initial implementation with tldraw + Supabase (2026-02-07)
+### **Documentation:**
+- [Next.js App Router](https://nextjs.org/docs/app)
+- [TLDraw SDK](https://tldraw.dev/docs)
+- [Supabase Realtime](https://supabase.com/docs/guides/realtime)
+- [Supabase RLS](https://supabase.com/docs/guides/auth/row-level-security)
 
-**Questions?** Check [QUICKSTART.md](QUICKSTART.md) for setup help or [DEPLOYMENT.md](DEPLOYMENT.md) for deployment guidance.
+### **Key Design Decisions:**
+1. **Why tldraw over custom canvas?** Faster MVP, professional features built-in, CRDT conflict resolution
+2. **Why Supabase over Firebase?** PostgreSQL (relational), better RLS, real-time broadcast
+3. **Why Next.js App Router over Pages?** Modern, Server Components reduce client JS
+4. **Why anonymous over accounts?** Remove all friction, perfect for study groups
+
+### **Project Documentation:**
+- [Quick Start Guide](QUICKSTART.md) - 10-minute setup with troubleshooting
+- [Supabase Setup](SUPABASE_SETUP.md) - Database configuration step-by-step
+- [Deployment Guide](DEPLOYMENT.md) - Vercel deployment with monitoring
+- [Project Summary](PROJECT_SUMMARY.md) - Comprehensive implementation details
+
+---
+
+## 🚢 Deployment & DevOps
+
+### **Environments:**
+- **Development:** Local (`localhost:3000`)
+- **Staging:** Vercel preview branch (auto-deployed on PR)
+- **Production:** Vercel main branch (manual promotion)
+
+### **Deployment checklist:**
+```bash
+# 1. Run tests
+npm run test
+
+# 2. Type check
+npm run type-check
+
+# 3. Build production
+npm run build
+
+# 4. Deploy (Vercel auto-deploys from GitHub)
+git push origin main
+```
+
+### **Monitoring:**
+- **Errors:** Vercel monitoring (automatic)
+- **Uptime:** Vercel monitoring (automatic)
+- **Database:** Supabase dashboard (query performance, storage)
+
+---
+
+## ✅ Summary: Key Takeaways
+
+1. **Keep it simple:** 100 lines beats 1000 lines
+2. **Verify everything:** AI suggestions need human review
+3. **Security first:** RLS, input validation, no exposed secrets
+4. **Real-time carefully:** Debounce updates, handle disconnections
+5. **Document decisions:** Update this file when you learn something
+6. **Test edge cases:** Empty states, max capacity, network failures
+7. **Mobile matters:** 50% of users will use phones
+8. **Plan before code:** Use Plan Mode for complex features
+
+---
+
+**Last updated:** 2026-02-07
+**Version:** 2.0 (Comprehensive development guidelines)
+**Next review:** After Phase 2 feature completion
+
+---
+
+## 🤝 Contributing to This File
+
+When you discover a better pattern:
+1. Add it to the relevant section
+2. Include code example (good vs. bad)
+3. Explain WHY this pattern is better
+4. Commit with message: "docs: update CLAUDE.md with [pattern]"
+
+This file should grow with the project. If you hesitate to commit something because "it's too small," commit it anyway. Small improvements compound.
+
+---
+
+**Remember:** This tool helps students collaborate on homework, projects, and learning. Every decision we make affects their ability to work together effectively. Code quality = collaboration quality. Take pride in building something that matters.

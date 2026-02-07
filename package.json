@@ -10,7 +10,9 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "feature": "bash scripts/workflow.sh",
+    "verify": "bash scripts/verify-quality.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
