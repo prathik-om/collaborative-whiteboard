@@ -24,7 +24,11 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
         try {
           const changes = message.payload as { records: TLRecord[] };
           if (changes.records && Array.isArray(changes.records)) {
-            editorRef.current.store.put(changes.records);
+            // CRITICAL: Use mergeRemoteChanges() to prevent infinite loops
+            // This tells tldraw these changes came from remote (don't re-broadcast)
+            editorRef.current.store.mergeRemoteChanges(() => {
+              editorRef.current!.store.put(changes.records);
+            });
           }
         } catch (err) {
           console.error('Failed to apply canvas changes:', err);
@@ -32,6 +36,24 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
       }
     },
   });
+
+  // Load canvas snapshot for late joiners (if exists)
+  useEffect(() => {
+    if (!editorRef.current || !session.canvas_snapshot) return;
+
+    try {
+      // Load existing canvas state when joining mid-session
+      const snapshot = session.canvas_snapshot as unknown as TLRecord[];
+      if (Array.isArray(snapshot)) {
+        editorRef.current.store.mergeRemoteChanges(() => {
+          editorRef.current!.store.put(snapshot);
+        });
+        console.log('Loaded canvas snapshot for late joiner');
+      }
+    } catch (err) {
+      console.error('Failed to load canvas snapshot:', err);
+    }
+  }, [session.canvas_snapshot]);
 
   // Broadcast canvas changes to other participants
   useEffect(() => {
