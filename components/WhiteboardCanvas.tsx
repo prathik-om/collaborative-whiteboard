@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Tldraw, Editor, TLRecord } from '@tldraw/tldraw';
 import '@tldraw/tldraw/tldraw.css';
 import { useBroadcastChannel } from '@/hooks/useBroadcastChannel';
+import { supabase } from '@/lib/supabase';
 import type { Session } from '@/types/database.types';
 
 interface WhiteboardCanvasProps {
@@ -13,6 +14,77 @@ interface WhiteboardCanvasProps {
 export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
   const [participantCount, setParticipantCount] = useState(1);
+  const activityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastActivityUpdateRef = useRef<number>(Date.now());
+  const saveSnapshotTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSnapshotSaveRef = useRef<number>(0);
+
+  // Debounced function to update last_activity_at (prevent excessive DB writes)
+  const updateActivity = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastActivityUpdateRef.current;
+
+    // Only update if 30 seconds have passed since last update
+    if (timeSinceLastUpdate < 30000) {
+      // Schedule an update for later if not already scheduled
+      if (!activityTimerRef.current) {
+        activityTimerRef.current = setTimeout(() => {
+          activityTimerRef.current = null;
+          updateActivity();
+        }, 30000 - timeSinceLastUpdate);
+      }
+      return;
+    }
+
+    // Update the database
+    lastActivityUpdateRef.current = now;
+    supabase
+      .from('sessions')
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq('code', session.code)
+      .then(({ error }) => {
+        if (error) {
+          console.error('Failed to update session activity:', error);
+        }
+      });
+  }, [session.code]);
+
+  // Save canvas snapshot to database (debounced every 5 seconds)
+  const saveSnapshot = useCallback(() => {
+    if (!editorRef.current) return;
+
+    const now = Date.now();
+    const timeSinceLastSave = now - lastSnapshotSaveRef.current;
+
+    // Only save if 5 seconds have passed since last save
+    if (timeSinceLastSave < 5000) {
+      // Schedule a save for later if not already scheduled
+      if (!saveSnapshotTimerRef.current) {
+        saveSnapshotTimerRef.current = setTimeout(() => {
+          saveSnapshotTimerRef.current = null;
+          saveSnapshot();
+        }, 5000 - timeSinceLastSave);
+      }
+      return;
+    }
+
+    // Get current canvas snapshot
+    const snapshot = editorRef.current.store.getStoreSnapshot();
+    lastSnapshotSaveRef.current = now;
+
+    // Save to database
+    supabase
+      .from('sessions')
+      .update({ canvas_snapshot: snapshot })
+      .eq('code', session.code)
+      .then(({ error }) => {
+        if (error) {
+          console.error('Failed to save canvas snapshot:', error);
+        } else {
+          console.log('Canvas snapshot saved to database');
+        }
+      });
+  }, [session.code]);
 
   // Set up broadcast channel for real-time sync
   const { broadcast, isConnected } = useBroadcastChannel({
@@ -37,25 +109,10 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
     },
   });
 
-  // Load canvas snapshot for late joiners (if exists)
-  useEffect(() => {
-    if (!editorRef.current || !session.canvas_snapshot) return;
+  // Note: Canvas snapshot is now loaded in the onMount callback
+  // This ensures the editor is ready before we try to load data
 
-    try {
-      // Load existing canvas state when joining mid-session
-      const snapshot = session.canvas_snapshot as unknown as TLRecord[];
-      if (Array.isArray(snapshot)) {
-        editorRef.current.store.mergeRemoteChanges(() => {
-          editorRef.current!.store.put(snapshot);
-        });
-        console.log('Loaded canvas snapshot for late joiner');
-      }
-    } catch (err) {
-      console.error('Failed to load canvas snapshot:', err);
-    }
-  }, [session.canvas_snapshot]);
-
-  // Broadcast canvas changes to other participants
+  // Broadcast canvas changes to other participants & track activity
   useEffect(() => {
     if (!editorRef.current || !isConnected) return;
 
@@ -63,6 +120,10 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
 
     // Listen to store changes
     const unsubscribe = editor.store.listen((entry) => {
+      // CRITICAL: Only broadcast changes from the local user, not remote changes
+      // This prevents infinite loops where remote changes get broadcast back
+      if (entry.source !== 'user') return;
+
       const { changes } = entry;
       const addedRecords = Object.values(changes.added);
       const updatedRecords = Object.values(changes.updated).map((change) => change[1]);
@@ -73,19 +134,36 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
           type: 'canvas_changes',
           payload: { records },
         });
+
+        // Track activity for cleanup system
+        updateActivity();
+
+        // Save canvas snapshot to database (debounced)
+        saveSnapshot();
       }
     });
 
-    return unsubscribe;
-  }, [isConnected, broadcast]);
+    return () => {
+      unsubscribe();
+      // Clear any pending timers
+      if (activityTimerRef.current) {
+        clearTimeout(activityTimerRef.current);
+      }
+      if (saveSnapshotTimerRef.current) {
+        clearTimeout(saveSnapshotTimerRef.current);
+      }
+    };
+  }, [isConnected, broadcast, updateActivity, saveSnapshot]);
 
   return (
     <div className="h-full w-full">
-      {/* Connection status indicator */}
-      <div className="absolute top-4 right-4 z-10">
+      {/* Connection status indicator - moved to bottom-right to avoid tldraw UI overlap */}
+      <div className="absolute bottom-20 right-4 z-50">
         <div
-          className={`px-3 py-2 rounded-lg shadow-lg flex items-center gap-2 ${
-            isConnected ? 'bg-green-50' : 'bg-yellow-50'
+          className={`px-3 py-2 rounded-lg shadow-lg flex items-center gap-2 border ${
+            isConnected
+              ? 'bg-green-50 border-green-200'
+              : 'bg-yellow-50 border-yellow-200'
           }`}
         >
           <div
@@ -93,10 +171,10 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
               isConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
             }`}
           />
-          <span className="text-sm font-medium">
+          <span className="text-sm font-medium text-gray-900">
             {isConnected ? 'Connected' : 'Connecting...'}
           </span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-600">
             {participantCount} {participantCount === 1 ? 'user' : 'users'}
           </span>
         </div>
@@ -107,6 +185,16 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
         onMount={(editor) => {
           editorRef.current = editor;
           console.log('Editor mounted');
+
+          // Load canvas snapshot if it exists
+          if (session.canvas_snapshot && typeof session.canvas_snapshot === 'object') {
+            try {
+              editor.store.loadSnapshot(session.canvas_snapshot);
+              console.log('Canvas snapshot loaded successfully');
+            } catch (err) {
+              console.error('Failed to load canvas snapshot:', err);
+            }
+          }
         }}
         autoFocus
       />

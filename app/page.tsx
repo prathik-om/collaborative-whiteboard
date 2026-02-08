@@ -1,10 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import Header from '@/components/Header';
+import RecentSessionsList from '@/components/RecentSessionsList';
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 p-8">
+    <>
+      <Header />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-8 p-8 pt-24">
       <div className="text-center">
         <h1 className="text-5xl font-bold mb-4">Collaborative Whiteboard</h1>
         <p className="text-xl text-gray-600 max-w-2xl">
@@ -27,6 +31,10 @@ export default function HomePage() {
           <p>✓ Educational templates & prompts</p>
         </div>
       </div>
-    </div>
+
+      {/* Recent sessions list */}
+      <RecentSessionsList />
+      </div>
+    </>
   );
 }

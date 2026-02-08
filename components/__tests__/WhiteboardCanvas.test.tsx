@@ -47,6 +47,11 @@ describe('WhiteboardCanvas', () => {
     canvas_snapshot: {},
     created_at: '2026-02-07T10:00:00Z',
     ended_at: null,
+    last_activity_at: '2026-02-07T10:00:00Z',
+    user_id: null,
+    created_by_device_id: 'device_123',
+    session_name: null,
+    is_public: true,
   };
 
   beforeEach(() => {

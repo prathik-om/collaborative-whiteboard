@@ -34,18 +34,41 @@
 
 ## Step 4: Run Database Migrations
 
+**Option A: Automated (recommended)**
+```bash
+# Install dependencies first
+npm install
+
+# Verify migrations
+npm run verify-migrations
+```
+
+**Option B: Manual**
 1. In Supabase dashboard, go to **SQL Editor**
 2. Copy and paste each migration file from `supabase/migrations/` in order:
    - `001_initial_schema.sql`
    - `002_rls_policies.sql`
    - `003_realtime_setup.sql`
+   - `004_session_cleanup.sql` ← **NEW**
+   - `005_update_rls_for_cleanup.sql` ← **NEW**
+   - `006_add_authentication.sql` ← **NEW**
 3. Click **Run** for each migration
+4. Verify: `npm run verify-migrations`
 
-## Step 5: Enable Realtime
+📚 **See detailed migration guide:** [docs/MIGRATION_TESTING.md](docs/MIGRATION_TESTING.md)
 
+## Step 5: Enable Realtime & Authentication
+
+**Realtime:**
 1. Go to **Database** → **Replication**
 2. Find tables: `sessions`, `participants`
 3. Toggle **Realtime** ON for both tables
+4. Click **Save**
+
+**Authentication:**
+1. Go to **Authentication** → **Providers**
+2. Enable **Email** provider
+3. (Optional) Customize email templates
 4. Click **Save**
 
 ## Step 6: Verify Setup
@@ -75,6 +98,18 @@
 
 ## Next Steps
 
+- Test authentication flow (Sign Up → Verify → Save Session)
+- Check cron jobs: Database → Cron Jobs (should see cleanup jobs)
 - Deploy to production (see DEPLOYMENT.md)
 - Customize session code adjectives/animals
-- Add custom templates
+
+## Verification
+
+Run automated checks:
+```bash
+npm run verify-migrations
+```
+
+Should output: `🎉 All migrations verified successfully!`
+
+See [docs/MIGRATION_TESTING.md](docs/MIGRATION_TESTING.md) for detailed testing guide.
