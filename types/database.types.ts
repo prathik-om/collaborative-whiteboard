@@ -3,6 +3,7 @@
 export type SessionType = 'classroom' | 'study-group' | 'individual';
 export type DrawingPermissions = 'read-only' | 'collaborative';
 export type SessionStatus = 'active' | 'paused' | 'ended' | 'inactive';
+export type ParticipantRole = 'viewer' | 'editor' | 'owner';
 
 export interface Session {
   id: string;
@@ -19,6 +20,8 @@ export interface Session {
   created_by_device_id: string | null;
   session_name: string | null;
   is_public: boolean;
+  // Permission fields (added in migration 008)
+  default_participant_role: ParticipantRole;
 }
 
 export interface Participant {
@@ -28,6 +31,16 @@ export interface Participant {
   nickname: string | null;
   joined_at: string;
   last_seen: string;
+}
+
+export interface ParticipantPermission {
+  id: string;
+  session_id: string;
+  participant_device_id: string | null;
+  participant_user_id: string | null;
+  role: ParticipantRole;
+  granted_at: string;
+  granted_by_user_id: string | null;
 }
 
 export interface SessionHistory {
@@ -81,6 +94,14 @@ export interface Database {
           access_count?: number;
         };
         Update: Partial<SessionHistory>;
+      };
+      participant_permissions: {
+        Row: ParticipantPermission;
+        Insert: Omit<ParticipantPermission, 'id' | 'granted_at'> & {
+          id?: string;
+          granted_at?: string;
+        };
+        Update: Partial<ParticipantPermission>;
       };
     };
   };

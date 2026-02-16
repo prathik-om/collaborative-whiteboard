@@ -16,6 +16,7 @@ export const mockSession: Session = {
   created_by_device_id: 'device_123',
   session_name: null,
   is_public: true,
+  default_participant_role: 'viewer',
 };
 
 export const mockBroadcastMessage: BroadcastMessage = {

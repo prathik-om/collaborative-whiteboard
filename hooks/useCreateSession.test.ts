@@ -61,6 +61,7 @@ describe('useCreateSession', () => {
       created_by_device_id: 'device_123',
       session_name: null,
       is_public: true,
+      default_participant_role: 'viewer',
     };
 
     const mockInsert = mockSupabaseResponse(mockData);
@@ -168,6 +169,7 @@ describe('useCreateSession', () => {
       created_by_device_id: 'device_123',
       session_name: null,
       is_public: true,
+      default_participant_role: 'viewer',
     };
 
     // Mock with a slight delay to capture loading state
@@ -227,6 +229,7 @@ describe('useCreateSession', () => {
       created_by_device_id: 'device_123',
       session_name: null,
       is_public: true,
+      default_participant_role: 'viewer',
     };
 
     // First call: return collision error (PostgreSQL unique constraint violation)
@@ -296,6 +299,7 @@ describe('useCreateSession', () => {
       created_by_device_id: 'device_123',
       session_name: null,
       is_public: true,
+      default_participant_role: 'viewer',
     };
 
     let callCount = 0;

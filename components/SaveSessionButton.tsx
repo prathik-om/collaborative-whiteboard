@@ -87,7 +87,6 @@ export default function SaveSessionButton({ session, deviceId, onSaved }: SaveSe
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        defaultMode="signup"
       />
 
       {/* Name Input Modal */}

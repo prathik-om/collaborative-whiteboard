@@ -139,7 +139,7 @@ export default function SessionsPage() {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No saved sessions</h3>
               <p className="text-gray-600 mb-6">
-                Start a whiteboard session and click "Save to Account" to see it here.
+                Start a whiteboard session and click &quot;Save to Account&quot; to see it here.
               </p>
               <Link
                 href="/board"

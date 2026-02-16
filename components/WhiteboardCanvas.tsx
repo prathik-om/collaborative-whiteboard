@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Tldraw, Editor, TLRecord } from '@tldraw/tldraw';
 import '@tldraw/tldraw/tldraw.css';
 import { useBroadcastChannel } from '@/hooks/useBroadcastChannel';
+import { useParticipantPermission } from '@/hooks/useParticipantPermission';
 import { supabase } from '@/lib/supabase';
 import type { Session } from '@/types/database.types';
 
@@ -18,6 +19,9 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
   const lastActivityUpdateRef = useRef<number>(Date.now());
   const saveSnapshotTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSnapshotSaveRef = useRef<number>(0);
+
+  // Check participant permissions
+  const { canEdit, role, loading: permissionLoading } = useParticipantPermission(session);
 
   // Debounced function to update last_activity_at (prevent excessive DB writes)
   const updateActivity = useCallback(() => {
@@ -112,9 +116,19 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
   // Note: Canvas snapshot is now loaded in the onMount callback
   // This ensures the editor is ready before we try to load data
 
+  // Enforce read-only mode based on permissions
+  useEffect(() => {
+    if (!editorRef.current || permissionLoading) return;
+
+    // Set editor to read-only if user cannot edit
+    editorRef.current.updateInstanceState({ isReadonly: !canEdit });
+
+    console.log(`Canvas mode: ${canEdit ? 'editable' : 'read-only'} (role: ${role})`);
+  }, [canEdit, permissionLoading, role]);
+
   // Broadcast canvas changes to other participants & track activity
   useEffect(() => {
-    if (!editorRef.current || !isConnected) return;
+    if (!editorRef.current || !isConnected || !canEdit) return;
 
     const editor = editorRef.current;
 
@@ -123,6 +137,9 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
       // CRITICAL: Only broadcast changes from the local user, not remote changes
       // This prevents infinite loops where remote changes get broadcast back
       if (entry.source !== 'user') return;
+
+      // CRITICAL: Guard against viewers broadcasting (defense-in-depth)
+      if (!canEdit) return;
 
       const { changes } = entry;
       const addedRecords = Object.values(changes.added);
@@ -153,30 +170,42 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
         clearTimeout(saveSnapshotTimerRef.current);
       }
     };
-  }, [isConnected, broadcast, updateActivity, saveSnapshot]);
+  }, [isConnected, broadcast, updateActivity, saveSnapshot, canEdit]);
 
   return (
     <div className="h-full w-full">
       {/* Connection status indicator - moved to bottom-right to avoid tldraw UI overlap */}
       <div className="absolute bottom-20 right-4 z-50">
         <div
-          className={`px-3 py-2 rounded-lg shadow-lg flex items-center gap-2 border ${
+          className={`px-3 py-2 rounded-lg shadow-lg flex flex-col gap-1 border ${
             isConnected
               ? 'bg-green-50 border-green-200'
               : 'bg-yellow-50 border-yellow-200'
           }`}
         >
-          <div
-            className={`h-2 w-2 rounded-full ${
-              isConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
-            }`}
-          />
-          <span className="text-sm font-medium text-gray-900">
-            {isConnected ? 'Connected' : 'Connecting...'}
-          </span>
-          <span className="text-xs text-gray-600">
-            {participantCount} {participantCount === 1 ? 'user' : 'users'}
-          </span>
+          <div className="flex items-center gap-2">
+            <div
+              className={`h-2 w-2 rounded-full ${
+                isConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
+              }`}
+            />
+            <span className="text-sm font-medium text-gray-900">
+              {isConnected ? 'Connected' : 'Connecting...'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-xs text-gray-600">
+              {participantCount} {participantCount === 1 ? 'user' : 'users'}
+            </span>
+            {role && (
+              <>
+                <span className="text-xs text-gray-400">•</span>
+                <span className="text-xs text-gray-700 font-medium">
+                  {role === 'owner' ? 'Owner' : role === 'editor' ? 'Can edit' : 'View only'}
+                </span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -189,7 +218,8 @@ export default function WhiteboardCanvas({ session }: WhiteboardCanvasProps) {
           // Load canvas snapshot if it exists
           if (session.canvas_snapshot && typeof session.canvas_snapshot === 'object') {
             try {
-              editor.store.loadSnapshot(session.canvas_snapshot);
+              // Cast to any to satisfy TypeScript - tldraw will validate the snapshot structure
+              editor.store.loadSnapshot(session.canvas_snapshot as any);
               console.log('Canvas snapshot loaded successfully');
             } catch (err) {
               console.error('Failed to load canvas snapshot:', err);

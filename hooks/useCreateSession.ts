@@ -42,6 +42,8 @@ export function useCreateSession() {
             status: 'active',
             drawing_permissions: sessionType === 'study-group' ? 'collaborative' : 'read-only',
             created_by_device_id: deviceId,
+            default_participant_role: 'viewer', // New participants join as viewers by default
+            is_public: true, // Sessions are public by default
           }])
           .select()
           .single();
